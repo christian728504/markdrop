@@ -31,7 +31,7 @@ from .utils import cleanup_download_dir, download_pdf
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-__version__ = "0.4.0"
+__version__ = "4.0.0"
 
 __all__ = [
     # Main processing functions
