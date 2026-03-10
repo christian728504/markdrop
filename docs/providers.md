@@ -1,50 +1,97 @@
-# Providers & Models Guide
+# Supported AI Providers & Model Configuration
 
-Markdrop is capable of automatically distributing tasks—like describing complex data plots, charts, equations, and tables—to a variety of modern AI providers. This document outlines exactly which models are used and how to control them.
+Markdrop operates completely agnostic to the underlying AI model processing the document images and tables. This affords users extreme flexibility. 
 
-## Supported Providers
-We maintain a suite of default models, audited regularly. Current defaults (as of **March 2026**):
+When you execute `markdrop describe`, the system will search the text for image binaries and table formats, package that visual and textual data according to the SDK specifications of the selected provider, and generate semantic summaries.
 
-| Provider | `--ai_provider` argument | Default Image Model | Default Table Model |
-| --- | --- | --- | --- |
-| Google Gemini | `gemini` | `gemini-3.1-flash-lite` | `gemini-3.1-flash-lite` |
-| OpenAI | `openai` | `gpt-5.4` | `gpt-5.4` |
-| Anthropic | `anthropic` | `claude-opus-4-6` | `claude-sonnet-4-5` |
-| Groq | `groq` | `meta-llama/llama-4-maverick...` | `llama-3.3-70b-versatile` |
-| OpenRouter | `openrouter` | *Needs Override* | *Needs Override* |
-| LiteLLM | `litellm` | *Needs Proxy Identifier* | *Needs Proxy Identifier* |
+---
 
-## Overriding Models on the CLI
-Both `--model` and `--text-model` flags are available during a `markdrop describe` execution to force alternate generations.
+## Default Providers (March 2026 Specifications)
 
-### Example: Using Anthropic
-Anthropic's Opus is the primary vision model, but it is expensive. If you want to use the cheaper Sonnet model for both Images and Tables:
+To simplify operations out of the box, Markdrop enforces rigorously-tested March 2026 defaults. If you do not override manually, these are the models Markdrop relies on for its core reasoning tasks.
+
+| Provider Flag | Network | Vision Model (Images) | Text Model (Tables) | Notes |
+| --- | --- | --- | --- | --- |
+| `--ai_provider gemini` | Google | `gemini-3.1-flash-lite` | `gemini-3.1-flash-lite` | Built directly on `google-genai` SDK. Currently defaults due to speed and broad availability. |
+| `--ai_provider openai` | OpenAI | `gpt-5.4` | `gpt-5.4` | Standard high-accuracy reasoning default. |
+| `--ai_provider anthropic` | Anthropic | `claude-opus-4-6` | `claude-sonnet-4-5` | **Crucial Split**: Opus handles complex visual reasoning across massive page layouts. Sonnet intercepts text tables, given it yields identical textual evaluations at 20% of the cost. |
+| `--ai_provider groq` | Groq | `meta-llama/llama-4-maverick...` | `llama-3.3-70b-versatile` | Ultra high-speed LLama inference proxy routes. |
+
+---
+
+## API & CLI Model Overrides
+
+The default models are robust but sometimes fail specific use-cases due to cost or speed limits. You can instruct Markdrop to utilize alternative models dynamically:
+
+### Via the CLI
+Use the `--model` flag to dictate the primary Vision model, and the optional `--text-model` flag to specify the tabular parser.
 
 ```bash
-markdrop describe file.md \
+markdrop describe out/report.md \
     --ai_provider anthropic \
     --model claude-sonnet-4-5 \
-    --text-model claude-sonnet-4-5
+    --text-model claude-haiku-3-5
+```
+*In the example above, all images are routed to Sonnet, and all tables are handled by Haiku, resulting in the cheapest possible Claude architecture.*
+
+### Via the Python API
+If constructing the `ProcessorConfig` manually:
+```python
+config = ProcessorConfig(
+    input_path="file.md",
+    output_dir="out",
+    ai_provider=AIProvider.OPENAI,
+    openai_model_name="o3-mini",
+    openai_text_model_name="gpt-5.4-turbo"
+)
 ```
 
-### Example: OpenRouter
-OpenRouter exposes numerous community endpoints. Pass any valid string from the [OpenRouter models index](https://openrouter.ai/models).
+---
+
+## Platform Proxies (Universal Access)
+
+Markdrop supports massive aggregate platforms routing via proxy paths.
+
+### OpenRouter (`--ai_provider openrouter`)
+OpenRouter proxies practically every LLM API worldwide over a unified OpenAI SDK spec framework. Markdrop passes specific metadata arguments behind the scenes ensuring compatibility. Because OpenRouter is a gateway, *you must specify a model override*. The default string is technically `google/gemini-3.1-flash-lite`.
 
 ```bash
+# Provide the explicit OpenRouter registry model string
 markdrop describe file.md \
     --ai_provider openrouter \
-    --model "google/gemini-2.5-pro-vision" \
-    --text-model "meta-llama/llama-4-scout"
+    --model "x-ai/grok-vision-beta"
 ```
 
-### Example: LiteLLM Proxies
-LiteLLM unifies over 100+ providers via a proxy-naming standard. You simply prefix the provider name.
+### LiteLLM (`--ai_provider litellm`)
+An open-source proxy router. Assuming you have configured the downstream provider keys (e.g. `export MISTRAL_API_KEY="..."`), you simply pass the `litellm` prefix combined with `[provider]/[model]`.
 
-```bash
-# Assuming you previously set API environment bounds
-export ANTHROPIC_API_KEY="..."
+```python
+config = ProcessorConfig(
+    input_path="file.md",
+    output_dir="out",
+    ai_provider=AIProvider.LITELLM,
+    litellm_model_name="mistral/pixtral-large-2411"
+)
+```
 
-markdrop describe file.md \
-    --ai_provider litellm \
-    --model "anthropic/claude-opus-4-6"
+---
+
+## Local Models
+
+Markdrop's `generate` command supports evaluating isolated images directly against local PyTorch inferences via the `transformers` library on your GPU, minimizing cloud egress.
+
+These local endpoints are not used for bulk Markdown enrichment, but rather programmatic benchmarking (`models/responder.py`):
+1.  **Qwen** (`model_choice='qwen'`): Utilizes `qwen_vl_utils`.
+2.  **LLaMA Vision** (`model_choice='llama-vision'`).
+3.  **Molmo** (`model_choice='molmo'`): Half-precision inference utilizing Hugging Face configurations.
+4.  **Pixtral** (`model_choice='pixtral'`).
+
+```python
+from markdrop import generate_descriptions
+generate_descriptions(
+    input_path='eval_dataset/',
+    output_dir='local_results/',
+    prompt='Identify object.',
+    llm_client=['molmo'] 
+)
 ```
