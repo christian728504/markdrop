@@ -17,8 +17,8 @@ We love your input! We want to make contributing to Markdrop as easy and transpa
 2. Update the CHANGELOG.md with version bump
 3. The PR will be merged once you have approval
 
-## Any contributions you make will be under the MIT License
-When you submit code changes, your submissions are understood to be under the same [MIT License](LICENSE) that covers the project.
+## Any contributions you make will be under the GPL-3.0 License
+When you submit code changes, your submissions are understood to be under the same [GPL-3.0 License](LICENSE) that covers the project.
 
 ## Report bugs using Github's [issue tracker](https://github.com/shoryasethia/markdrop/issues)
 
