@@ -46,15 +46,32 @@ All notable changes to this project will be documented in this file.
 ## [0.3.1.1] - 30-01-2025
 ### Added
 -  Fix MarkDropConfig
-<<<<<<< HEAD
-=======
-
 ## [0.3.1.2] - 30-01-2025
 ### Added
 -  Removed conflicts in apikeys setup
 
-## [3.4.0] - 05-07-2025
+## [0.3.4] - 05-07-2025
 ### Changed
 - Deprecated `make_markdown`, `extract_images`, and `extract_tables_from_pdf` functions.
 - Improved requirements for better installations.
 - Fixed image path error in Gemini description generations.
+
+## [0.4.0] - 10-03-2026
+### Added
+- Anthropic, Groq, OpenRouter, and LiteLLM provider support.
+- CLI arguments `--model` and `--text-model` to dynamically override models.
+- Support for `[extras]` installation variants (`markdrop[anthropic]`, etc.).
+
+### Changed
+- Updated default models to March 2026 flagship/stable versions (`gpt-5.4`, `gemini-3.1-flash-lite`, `claude-opus-4-6`, `meta-llama/llama-4-maverick`).
+- Switched default `GOOGLE_API_KEY` to `GEMINI_API_KEY` standard.
+- Removed hardcoded module-level variables (e.g. `input_doc_path`) and dead blocks to allow clean importing.
+- Changed default encoding logic for image uploads.
+
+### Fixed
+- SSRF Vulnerability: Prevented `download_pdf` from hitting private/local IPs.
+- Path Traversal: Secured local file reading in `replace_image`.
+- DoS Risk: Added 30s timeout and 200MB size limit for PDF downloads.
+- Temp File Race Conditions: Enforced secure `tempfile.NamedTemporaryFile` usage.
+- File Permissions: Secured auto-generated `.env` files with strict Unix permissions.
+- Mutable default arguments in `img_descriptions.py`.
