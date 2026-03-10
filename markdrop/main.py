@@ -1,16 +1,42 @@
 import argparse
+import logging
+import sys
+import time
 from pathlib import Path
-from .process import markdrop, add_downloadable_tables, MarkDropConfig
-from .parse import process_markdown, ProcessorConfig, AIProvider
+
 from .helper import analyze_pdf_images
-from .setup_keys import setup_keys
 from .models.img_descriptions import generate_descriptions
+from .parse import AIProvider, ProcessorConfig, process_markdown
+from .process import MarkDropConfig, add_downloadable_tables, markdrop
+from .setup_keys import setup_keys
 
 # Human-readable provider list for CLI help text
 PROVIDER_CHOICES = [p.value for p in AIProvider]
 
 
+def configure_logging(log_level=logging.INFO):
+    """Set up the root markdrop logger to output to console and file when running as CLI."""
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"markdrop_{time.strftime('%Y%m%d_%H%M%S')}.log"
+
+    logger = logging.getLogger("markdrop")
+    logger.setLevel(log_level)
+
+    fmt = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    
+    fh = logging.FileHandler(log_file)
+    fh.setFormatter(fmt)
+    
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(fmt)
+    
+    logger.addHandler(fh)
+    logger.addHandler(sh)
+
+
 def main():
+    configure_logging()
 
     parser = argparse.ArgumentParser(
         description="MarkDrop: A comprehensive PDF processing toolkit.",
@@ -24,10 +50,12 @@ def main():
         help="Convert PDF to markdown and HTML.",
     )
     convert_parser.add_argument("input_path", type=str, help="Path or URL to the input PDF file")
-    convert_parser.add_argument("--output_dir", type=str, default="output",
-                                help="Directory to save output files")
-    convert_parser.add_argument("--add_tables", action="store_true",
-                                help="Add downloadable tables to the HTML output")
+    convert_parser.add_argument(
+        "--output_dir", type=str, default="output", help="Directory to save output files"
+    )
+    convert_parser.add_argument(
+        "--add_tables", action="store_true", help="Add downloadable tables to the HTML output"
+    )
 
     # ------------------------------------------------------------------ describe
     describe_parser = subparsers.add_parser(
@@ -35,10 +63,14 @@ def main():
         help="Generate AI descriptions for images and tables in a markdown file.",
     )
     describe_parser.add_argument("input_path", type=str, help="Path to the markdown file")
-    describe_parser.add_argument("--output_dir", type=str, default="output",
-                                 help="Directory to save the processed file")
     describe_parser.add_argument(
-        "--ai_provider", type=str, choices=PROVIDER_CHOICES, default="gemini",
+        "--output_dir", type=str, default="output", help="Directory to save the processed file"
+    )
+    describe_parser.add_argument(
+        "--ai_provider",
+        type=str,
+        choices=PROVIDER_CHOICES,
+        default="gemini",
         help=(
             "AI provider to use for descriptions.\n"
             "  gemini      – Google Gemini 2.0 Flash\n"
@@ -49,12 +81,16 @@ def main():
             "  litellm     – LiteLLM (100+ providers, unified API)"
         ),
     )
-    describe_parser.add_argument("--remove_images", action="store_true",
-                                 help="Replace images with their descriptions")
-    describe_parser.add_argument("--remove_tables", action="store_true",
-                                 help="Replace tables with their summaries")
     describe_parser.add_argument(
-        "--model", type=str, default="",
+        "--remove_images", action="store_true", help="Replace images with their descriptions"
+    )
+    describe_parser.add_argument(
+        "--remove_tables", action="store_true", help="Replace tables with their summaries"
+    )
+    describe_parser.add_argument(
+        "--model",
+        type=str,
+        default="",
         help=(
             "Override the vision/primary model for the chosen provider.\n"
             "Examples:\n"
@@ -66,36 +102,53 @@ def main():
         ),
     )
     describe_parser.add_argument(
-        "--text-model", dest="text_model", type=str, default="",
+        "--text-model",
+        dest="text_model",
+        type=str,
+        default="",
         help="Override the text-only model (used for table descriptions). Same format as --model.",
     )
 
     # ------------------------------------------------------------------ analyze
     analyze_parser = subparsers.add_parser("analyze", help="Analyze images in a PDF file")
     analyze_parser.add_argument("input_path", type=str, help="Path or URL to the PDF file")
-    analyze_parser.add_argument("--output_dir", type=str, default="output/analysis",
-                                help="Directory to save analysis results")
-    analyze_parser.add_argument("--save_images", action="store_true",
-                                help="Save extracted images")
+    analyze_parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="output/analysis",
+        help="Directory to save analysis results",
+    )
+    analyze_parser.add_argument("--save_images", action="store_true", help="Save extracted images")
 
     # ------------------------------------------------------------------ setup
     setup_parser = subparsers.add_parser("setup", help="Set up API keys for AI providers")
     setup_parser.add_argument(
-        "provider", type=str,
+        "provider",
+        type=str,
         choices=["gemini", "openai", "anthropic", "groq", "openrouter", "litellm"],
         help="The AI provider to configure",
     )
 
     # ------------------------------------------------------------------ generate
     generate_parser = subparsers.add_parser("generate", help="Generate descriptions for images")
-    generate_parser.add_argument("input_path", type=str,
-                                 help="Path to an image file or a directory of images")
-    generate_parser.add_argument("--output_dir", type=str, default="output/descriptions",
-                                 help="Directory to save the descriptions CSV")
-    generate_parser.add_argument("--prompt", type=str, default="Describe the image in detail.",
-                                 help="Prompt for the AI model")
-    generate_parser.add_argument("--llm_client", nargs="+", default=["gemini"],
-                                 help="List of LLM clients to use")
+    generate_parser.add_argument(
+        "input_path", type=str, help="Path to an image file or a directory of images"
+    )
+    generate_parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="output/descriptions",
+        help="Directory to save the descriptions CSV",
+    )
+    generate_parser.add_argument(
+        "--prompt",
+        type=str,
+        default="Describe the image in detail.",
+        help="Prompt for the AI model",
+    )
+    generate_parser.add_argument(
+        "--llm_client", nargs="+", default=["gemini"], help="List of LLM clients to use"
+    )
 
     # ------------------------------------------------------------------ dispatch
     args = parser.parse_args()
@@ -122,8 +175,9 @@ def main():
         print(f"Description generation complete. Output saved in {args.output_dir}")
 
     elif args.command == "analyze":
-        analyze_pdf_images(args.input_path, args.output_dir, verbose=True,
-                           save_images=args.save_images)
+        analyze_pdf_images(
+            args.input_path, args.output_dir, verbose=True, save_images=args.save_images
+        )
         print(f"Analysis complete. Results saved in {args.output_dir}")
 
     elif args.command == "setup":

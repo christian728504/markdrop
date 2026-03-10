@@ -11,5 +11,5 @@ python-dotenv
 pymupdf
 requests
 tqdm
-google-generativeai
+google-genai
 numpy<2.0

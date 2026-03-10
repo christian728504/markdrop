@@ -1,5 +1,6 @@
 import logging
 
+
 def get_logger(name):
     """
     Creates a logger with the specified name.
@@ -19,12 +20,12 @@ def get_logger(name):
         c_handler.setLevel(logging.INFO)
 
         # File handler
-        f_handler = logging.FileHandler('runtime.log')
+        f_handler = logging.FileHandler("runtime.log")
         f_handler.setLevel(logging.DEBUG)
 
         # Create formatters and add them to handlers
-        c_format = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
-        f_format = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+        c_format = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
+        f_format = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
         c_handler.setFormatter(c_format)
         f_handler.setFormatter(f_format)
 

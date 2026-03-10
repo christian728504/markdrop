@@ -9,7 +9,10 @@ logs/
 __pycache__/
 *.pyc
 
-tests/
+# Pytest & Ruff
+.pytest_cache/
+.ruff_cache/
+pytest_out*.txt
 
 # Temporary files
 temp.xlsx

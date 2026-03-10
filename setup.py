@@ -18,7 +18,7 @@ setup(
         "pymupdf",
         "requests",
         "tqdm",
-        "google-generativeai",
+        "google-genai",
         "numpy<2.0",
     ],
     extras_require={
@@ -29,17 +29,13 @@ setup(
         # Install with: pip install markdrop[litellm]
         "litellm": ["litellm>=1.0.0"],
         # Install with: pip install markdrop[local-models]
-        "local-models": [
-            "torch",
-            "transformers",
-        ],
+        "local-models": ["ollama"],
         # Install everything: pip install markdrop[all]
         "all": [
             "anthropic>=0.40.0",
             "groq>=0.14.0",
             "litellm>=1.0.0",
-            "torch",
-            "transformers",
+            "ollama"
         ],
     },
     author="Shorya Sethia",

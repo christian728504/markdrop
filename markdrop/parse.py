@@ -14,62 +14,28 @@ Supported AI providers
     litellm      – LiteLLM (any 100+ providers via unified interface)
 """
 
-import os
-import re
-import time
 import base64
 import logging
+import os
+import re
 import shutil
-from pathlib import Path
-from enum import Enum
-from datetime import datetime
-from dataclasses import dataclass, field
-from typing import Optional
-
+import time
 import urllib.parse
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Lazy named logger – does NOT touch the root logger or create directories at
-# import time.
+# Named logger (handlers are configured in main.py)
 # ---------------------------------------------------------------------------
-_logger: Optional[logging.Logger] = None
-
-
-def _get_logger() -> logging.Logger:
-    """Lazily initialise the markdrop.parse logger with file + stream handlers."""
-    global _logger
-    if _logger is not None:
-        return _logger
-
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / f'markdrop_parse_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
-
-    _logger = logging.getLogger("markdrop.parse")
-    if not _logger.handlers:
-        _logger.setLevel(logging.INFO)
-        fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        fh = logging.FileHandler(log_file)
-        fh.setFormatter(fmt)
-        sh = logging.StreamHandler()
-        sh.setFormatter(fmt)
-        _logger.addHandler(fh)
-        _logger.addHandler(sh)
-    return _logger
-
-
-class _LazyLogger:
-    """Proxy so callers can write ``logger.info(...)`` before the logger is initialised."""
-    def __getattr__(self, name):
-        return getattr(_get_logger(), name)
-
-
-logger = _LazyLogger()
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
 # Provider enum
 # ---------------------------------------------------------------------------
+
 
 class AIProvider(Enum):
     GEMINI = "gemini"
@@ -102,6 +68,7 @@ DEFAULT_TABLE_PROMPT = (
 # Configuration dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ProcessorConfig:
     input_path: str
@@ -119,8 +86,8 @@ class ProcessorConfig:
     # for the selected provider (takes precedence over provider-specific
     # model fields below). Useful for the --model CLI flag.
     # ----------------------------------------------------------------
-    model_name_override: str = ""        # vision / primary model
-    text_model_name_override: str = ""   # text-only model
+    model_name_override: str = ""  # vision / primary model
+    text_model_name_override: str = ""  # text-only model
 
     # --- Gemini ---
     # gemini-3.1-flash-lite: launched March 3 2026, cost-efficient, low-latency
@@ -193,6 +160,7 @@ class ProcessorConfig:
 # AI Processor
 # ---------------------------------------------------------------------------
 
+
 class AIProcessor:
     def __init__(self, config: ProcessorConfig):
         if not isinstance(config.ai_provider, AIProvider):
@@ -210,22 +178,22 @@ class AIProcessor:
     def _setup_ai_clients(self):
         """Lazily import and initialise only the required provider client."""
         from dotenv import load_dotenv
+
         load_dotenv()
 
         p = self.config.ai_provider
 
         if p == AIProvider.GEMINI:
-            import google.generativeai as genai  # type: ignore
+            from google import genai  # type: ignore
+
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ValueError("GEMINI_API_KEY not found – run: markdrop setup gemini")
-            genai.configure(api_key=api_key)
-            # Use effective_model() so --model CLI flag is respected
-            self.image_model = genai.GenerativeModel(self.config.effective_model())
-            self.text_model = genai.GenerativeModel(self.config.effective_text_model())
+            self.gemini_client = genai.Client(api_key=api_key)
 
         elif p == AIProvider.OPENAI:
             from openai import OpenAI  # type: ignore
+
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 raise ValueError("OPENAI_API_KEY not found – run: markdrop setup openai")
@@ -233,6 +201,7 @@ class AIProcessor:
 
         elif p == AIProvider.ANTHROPIC:
             import anthropic  # type: ignore
+
             api_key = os.getenv("ANTHROPIC_API_KEY")
             if not api_key:
                 raise ValueError("ANTHROPIC_API_KEY not found – run: markdrop setup anthropic")
@@ -240,6 +209,7 @@ class AIProcessor:
 
         elif p == AIProvider.GROQ:
             from openai import OpenAI  # type: ignore
+
             api_key = os.getenv("GROQ_API_KEY")
             if not api_key:
                 raise ValueError("GROQ_API_KEY not found – run: markdrop setup groq")
@@ -250,6 +220,7 @@ class AIProcessor:
 
         elif p == AIProvider.OPENROUTER:
             from openai import OpenAI  # type: ignore
+
             api_key = os.getenv("OPENROUTER_API_KEY")
             if not api_key:
                 raise ValueError("OPENROUTER_API_KEY not found – run: markdrop setup openrouter")
@@ -266,6 +237,7 @@ class AIProcessor:
 
         elif p == AIProvider.LITELLM:
             import litellm  # type: ignore
+
             self._litellm = litellm
 
         else:
@@ -281,9 +253,15 @@ class AIProcessor:
 
     def _image_media_type(self, image_path: str) -> str:
         ext = Path(image_path).suffix.lower().lstrip(".")
-        mapping = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-                   "gif": "image/gif", "webp": "image/webp", "tiff": "image/tiff",
-                   "bmp": "image/bmp"}
+        mapping = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "webp": "image/webp",
+            "tiff": "image/tiff",
+            "bmp": "image/bmp",
+        }
         return mapping.get(ext, "image/jpeg")
 
     def process_image(self, image_path: str) -> str:
@@ -294,79 +272,127 @@ class AIProcessor:
         p = self.config.ai_provider
 
         if p == AIProvider.GEMINI:
+
             def _call():
                 from PIL import Image  # type: ignore
+
                 img = Image.open(image_path)
-                return self.image_model.generate_content([self.config.image_prompt, img]).text
+                response = self.gemini_client.models.generate_content(
+                    model=self.config.effective_model(),
+                    contents=[self.config.image_prompt, img]
+                )
+                return response.text
         elif p == AIProvider.OPENAI:
+
             def _call():
                 b64 = self._encode_image_b64(image_path)
                 media = self._image_media_type(image_path)
                 resp = self.client.chat.completions.create(
                     model=self.config.effective_model(),
-                    messages=[{"role": "user", "content": [
-                        {"type": "text", "text": self.config.image_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:{media};base64,{b64}"}},
-                    ]}],
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": self.config.image_prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:{media};base64,{b64}"},
+                                },
+                            ],
+                        }
+                    ],
                     max_tokens=500,
                 )
                 return resp.choices[0].message.content
         elif p == AIProvider.ANTHROPIC:
+
             def _call():
                 b64 = self._encode_image_b64(image_path)
                 media = self._image_media_type(image_path)
                 resp = self.client.messages.create(
                     model=self.config.effective_model(),
                     max_tokens=500,
-                    messages=[{"role": "user", "content": [
-                        {"type": "image", "source": {
-                            "type": "base64",
-                            "media_type": media,
-                            "data": b64,
-                        }},
-                        {"type": "text", "text": self.config.image_prompt},
-                    ]}],
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media,
+                                        "data": b64,
+                                    },
+                                },
+                                {"type": "text", "text": self.config.image_prompt},
+                            ],
+                        }
+                    ],
                 )
                 return resp.content[0].text
         elif p == AIProvider.GROQ:
+
             def _call():
                 b64 = self._encode_image_b64(image_path)
                 media = self._image_media_type(image_path)
                 resp = self.client.chat.completions.create(
                     model=self.config.effective_model(),
-                    messages=[{"role": "user", "content": [
-                        {"type": "text", "text": self.config.image_prompt},
-                        {"type": "image_url",
-                         "image_url": {"url": f"data:{media};base64,{b64}"}},
-                    ]}],
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": self.config.image_prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:{media};base64,{b64}"},
+                                },
+                            ],
+                        }
+                    ],
                     max_tokens=500,
                 )
                 return resp.choices[0].message.content
         elif p == AIProvider.OPENROUTER:
+
             def _call():
                 b64 = self._encode_image_b64(image_path)
                 media = self._image_media_type(image_path)
                 resp = self.client.chat.completions.create(
                     model=self.config.effective_model(),
-                    messages=[{"role": "user", "content": [
-                        {"type": "text", "text": self.config.image_prompt},
-                        {"type": "image_url",
-                         "image_url": {"url": f"data:{media};base64,{b64}"}},
-                    ]}],
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": self.config.image_prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:{media};base64,{b64}"},
+                                },
+                            ],
+                        }
+                    ],
                     max_tokens=500,
                 )
                 return resp.choices[0].message.content
         elif p == AIProvider.LITELLM:
+
             def _call():
                 b64 = self._encode_image_b64(image_path)
                 media = self._image_media_type(image_path)
                 resp = self._litellm.completion(
                     model=self.config.effective_model(),
-                    messages=[{"role": "user", "content": [
-                        {"type": "text", "text": self.config.image_prompt},
-                        {"type": "image_url",
-                         "image_url": {"url": f"data:{media};base64,{b64}"}},
-                    ]}],
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": self.config.image_prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:{media};base64,{b64}"},
+                                },
+                            ],
+                        }
+                    ],
                     max_tokens=500,
                 )
                 return resp.choices[0].message.content
@@ -375,7 +401,7 @@ class AIProcessor:
 
         try:
             description = self._process_with_retry(_call)
-            logger.info(f"Image processed in {time.time()-start:.2f}s")
+            logger.info(f"Image processed in {time.time() - start:.2f}s")
             return description
         except Exception as e:
             logger.error(f"Failed to process image {image_path}: {e}")
@@ -392,9 +418,15 @@ class AIProcessor:
         p = self.config.ai_provider
 
         if p == AIProvider.GEMINI:
+
             def _call():
-                return self.text_model.generate_content(full_prompt).text
+                response = self.gemini_client.models.generate_content(
+                    model=self.config.effective_text_model(),
+                    contents=full_prompt
+                )
+                return response.text
         elif p in (AIProvider.OPENAI, AIProvider.GROQ, AIProvider.OPENROUTER):
+
             def _call():
                 resp = self.client.chat.completions.create(
                     model=self.config.effective_text_model(),
@@ -403,6 +435,7 @@ class AIProcessor:
                 )
                 return resp.choices[0].message.content
         elif p == AIProvider.ANTHROPIC:
+
             def _call():
                 resp = self.client.messages.create(
                     model=self.config.effective_text_model(),
@@ -411,6 +444,7 @@ class AIProcessor:
                 )
                 return resp.content[0].text
         elif p == AIProvider.LITELLM:
+
             def _call():
                 resp = self._litellm.completion(
                     model=self.config.litellm_text_model_name,
@@ -423,7 +457,7 @@ class AIProcessor:
 
         try:
             summary = self._process_with_retry(_call)
-            logger.info(f"Table processed in {time.time()-start:.2f}s")
+            logger.info(f"Table processed in {time.time() - start:.2f}s")
             return summary
         except Exception as e:
             logger.error(f"Failed to process table: {e}")
@@ -449,6 +483,7 @@ class AIProcessor:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def process_markdown(config: ProcessorConfig) -> Path:
     """Process a markdown file – generate image/table descriptions via AI."""
     start = time.time()
@@ -468,7 +503,7 @@ def process_markdown(config: ProcessorConfig) -> Path:
     processed_path = output_dir / f"{input_path.stem}_processed{input_path.suffix}"
     shutil.copy2(backup_path, processed_path)
 
-    with open(processed_path, "r", encoding="utf-8") as f:
+    with open(processed_path, encoding="utf-8") as f:
         content = f.read()
 
     # ---- images ----
