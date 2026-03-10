@@ -1,14 +1,15 @@
 beautifulsoup4
 docling
 docling_core==2.16.0
-openai
+openai>=1.0.0
 openpyxl
+packaging
 pandas
 Pillow
 protobuf
 python-dotenv
 pymupdf
 requests
+tqdm
 google-generativeai
 numpy<2.0
-tqdm

@@ -9,10 +9,13 @@ def validate_image(image_path):
     try:
         with Image.open(image_path) as img:
             return True
-    except:
+    except Exception:
         return False
 
-def generate_descriptions(input_path, output_dir, prompt, llm_client=['qwen', 'gemini', 'openai', 'llama-vision', 'molmo', 'pixtral']):
+def generate_descriptions(input_path, output_dir, prompt, llm_client=None):
+    if llm_client is None:
+        llm_client = ['qwen', 'gemini', 'openai', 'llama-vision', 'molmo', 'pixtral']
+        
     # Convert paths to Path objects for better handling
     input_path = Path(input_path)
     output_dir = Path(output_dir)
@@ -26,8 +29,8 @@ def generate_descriptions(input_path, output_dir, prompt, llm_client=['qwen', 'g
         image_paths = [input_path]
     else:
         image_paths = [
-            p for p in input_path.glob('*') 
-            if p.suffix.lower() in ['.jpg', '.jpeg', '.png', '.bmp']
+            p for p in input_path.glob('*')
+            if p.suffix.lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff', '.tif']
         ]
     
     results = []
@@ -62,5 +65,7 @@ def generate_descriptions(input_path, output_dir, prompt, llm_client=['qwen', 'g
         csv_path = desc_dir / f'responses_{timestamp}.csv'
         df.to_csv(csv_path, index=False)
         print(f"Results saved to {csv_path}")
+        return csv_path
     else:
         print("No results to save")
+        return None

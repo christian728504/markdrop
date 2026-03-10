@@ -1,6 +1,10 @@
 import logging
+import os
+import tempfile
 import time
 from pathlib import Path
+from dataclasses import dataclass
+from typing import Optional
 
 from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
 
@@ -8,18 +12,12 @@ from docling.datamodel.base_models import FigureElement, InputFormat, Table
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
-
-import os
 import pandas as pd
 from bs4 import BeautifulSoup
 import base64
 import openpyxl
-from dataclasses import dataclass
-from typing import Optional
 
 
-input_doc_path = "path/to/input.pdf"
-output_dir = Path('output_dir')
 
 
 @dataclass
@@ -27,26 +25,28 @@ class MarkDropConfig:
     """Configuration class for MarkDrop"""
     image_resolution_scale: float = 2.0
     download_button_color: str = '#444444'
-    favicon_link: str = 'markdrop/src/markdrop-logo.png'
     log_level: int = logging.INFO
     log_dir: str = 'logs'
     excel_dir: str = 'markdrop_excel_tables'
 
-def setup_logging(config: MarkDropConfig) -> None:
-    """Set up logging configuration"""
+def setup_logging(config: MarkDropConfig) -> logging.Logger:
+    """Set up a named markdrop.process logger (does not touch the root logger)."""
     log_dir = Path(config.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    
+
     log_file = log_dir / f'markdrop_{time.strftime("%Y%m%d_%H%M%S")}.log'
-    
-    logging.basicConfig(
-        level=config.log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler()
-        ]
-    )
+
+    _log = logging.getLogger('markdrop.process')
+    if not _log.handlers:
+        _log.setLevel(config.log_level)
+        fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        fh = logging.FileHandler(log_file)
+        fh.setFormatter(fmt)
+        sh = logging.StreamHandler()
+        sh.setFormatter(fmt)
+        _log.addHandler(fh)
+        _log.addHandler(sh)
+    return _log
 
 def markdrop(input_doc_path: str, output_dir: str, config: Optional[MarkDropConfig] = None) -> Path:
     """
@@ -55,8 +55,7 @@ def markdrop(input_doc_path: str, output_dir: str, config: Optional[MarkDropConf
     if config is None:
         config = MarkDropConfig()
     
-    setup_logging(config)
-    logger = logging.getLogger(__name__)
+    logger = setup_logging(config)
     
     output_dir = Path(output_dir)
     tables_dir = output_dir / "tables"
@@ -124,7 +123,6 @@ def markdrop(input_doc_path: str, output_dir: str, config: Optional[MarkDropConf
         custom_head = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="icon" href="../markdrop/src/markdrop-logo.png" type="image/png">
     <meta charset="UTF-8">
     <title>MarkDrop</title>
 '''
@@ -268,14 +266,16 @@ def add_downloadable_tables(html_path: Path, config: Optional[MarkDropConfig] = 
                 # Create DataFrame
                 df = pd.DataFrame(table_data, columns=headers)
                 
-                # Save Excel file using context manager
-                with pd.ExcelWriter('temp.xlsx', engine='openpyxl') as excel_writer:
-                    df.to_excel(excel_writer, index=False)
-                
-                # Read the saved Excel file
-                with open('temp.xlsx', 'rb') as f:
-                    excel_data = f.read()
-                os.remove('temp.xlsx')
+                # Use a proper temp file to avoid race conditions and stale file leaks
+                tmp_fd, tmp_path = tempfile.mkstemp(suffix='.xlsx')
+                os.close(tmp_fd)
+                try:
+                    with pd.ExcelWriter(tmp_path, engine='openpyxl') as excel_writer:
+                        df.to_excel(excel_writer, index=False)
+                    with open(tmp_path, 'rb') as f:
+                        excel_data = f.read()
+                finally:
+                    os.unlink(tmp_path)
                 
                 base64_excel = base64.b64encode(excel_data).decode()
                 
@@ -315,24 +315,3 @@ def add_downloadable_tables(html_path: Path, config: Optional[MarkDropConfig] = 
         logger.error(f"Error in adding downloadable tables: {e}")
         raise
 
-# Example usage:
-if __name__ == "__main__":
-    # Create custom configuration (optional)
-    config = MarkDropConfig(
-        image_resolution_scale=2.5,
-        download_button_color='#444444',
-        log_level=logging.DEBUG
-    )
-    
-    # Convert document
-    input_doc_path = input_doc_path
-    output_dir = output_dir
-    
-    # Use with default config
-    html_path = markdrop(input_doc_path, output_dir)
-    
-    # Or use with custom config
-    # html_path = markdrop(input_doc_path, output_dir, config)
-    
-    # Add downloadable tables
-    downloadable_html = add_downloadable_tables(html_path, config)

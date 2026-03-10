@@ -2,8 +2,7 @@ import os
 import torch
 from transformers import AutoProcessor
 from ..setup_keys import setup_keys
-from dotenv import load_dotenv
-load_dotenv()
+
 
 from .logger import get_logger
 
@@ -54,24 +53,29 @@ def load_model(model_choice):
         return _model_cache[model_choice]
 
     elif model_choice == 'openai':
-        # Setup OpenAI
+        from dotenv import load_dotenv
+        load_dotenv()
         
+        # Setup OpenAI
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
-            setup_keys(key = 'openai')
+            setup_keys(provider='openai')
         
         return api_key, None
     
     elif model_choice == 'gemini':
+        from dotenv import load_dotenv
+        load_dotenv()
+        
         # Load Gemini model
         import google.generativeai as genai
         
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            setup_keys(key = 'google') 
+            setup_keys(provider='gemini')
         
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')  # Use the appropriate model # gemini-1.5-flash-002
+        model = genai.GenerativeModel('gemini-3.1-flash-lite')
         return model, None
 
 
@@ -102,11 +106,11 @@ def load_model(model_choice):
         from vllm.sampling_params import SamplingParams #type: ignore
         from vllm import LLM #type: ignore
         
-        model = LLM(model="HuggingFaceH4/zephyr-7b-beta",  #mistralai/Pixtral-12B-2409
-                    tokenizer_mode="mistral",                 
-                    gpu_memory_utilization=0.8,  # Increase GPU memory utilization
-                    max_model_len=8192,          # Decrease max model length
-                    dtype="float16",             # Use half precision to save memory
+        model = LLM(model="mistralai/Pixtral-12B-2409",
+                    tokenizer_mode="mistral",
+                    gpu_memory_utilization=0.8,
+                    max_model_len=8192,
+                    dtype="float16",
                     trust_remote_code=True)
         sampling_params = SamplingParams(max_tokens=1024)
         _model_cache[model_choice] = (model, sampling_params, device)

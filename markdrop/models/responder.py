@@ -21,7 +21,7 @@ def get_model_device(model):
     """Get the device where the model currently resides"""
     try:
         return next(model.parameters()).device
-    except:
+    except Exception:
         return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def generate_response(images, query, resized_height=280, resized_width=280, model_choice='qwen'):
@@ -78,7 +78,15 @@ def generate_response(images, query, resized_height=280, resized_width=280, mode
             return output_text[0]
         
         elif model_choice == 'gemini':
-            model, _ = load_model('gemini')
+            # Load Gemini model
+            import google.generativeai as genai
+            
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY not found – run: markdrop setup gemini")
+            
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-3.1-flash-lite')
             
             try:
                 content = []
@@ -133,7 +141,7 @@ def generate_response(images, query, resized_height=280, resized_width=280, mode
 
             try:
                 response = client.chat.completions.create(
-                    model="gpt-4o",
+                    model="gpt-5.4",
                     messages=[{
                         "role": "user",
                         "content": content

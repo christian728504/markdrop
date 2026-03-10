@@ -135,6 +135,8 @@ def analyze_pdf_images(source: str, output_dir: str, verbose: bool = True, save_
         result = analyze_pdf_images_main(
             source=source,
             output_dir=output_dir,
+            verbose=verbose,
+            save_images=save_images,
         )
     except Exception as e:
         print(f"Error running analysis: {e}")
