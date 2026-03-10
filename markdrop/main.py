@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import logging
 import sys
 import time
@@ -171,7 +172,7 @@ def main():
             model_name_override=args.model,
             text_model_name_override=args.text_model,
         )
-        process_markdown(config)
+        asyncio.run(process_markdown(config))
         print(f"Description generation complete. Output saved in {args.output_dir}")
 
     elif args.command == "analyze":

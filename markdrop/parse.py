@@ -14,6 +14,7 @@ Supported AI providers
     litellm      – LiteLLM (any 100+ providers via unified interface)
 """
 
+import asyncio
 import base64
 import logging
 import os
@@ -264,8 +265,8 @@ class AIProcessor:
         }
         return mapping.get(ext, "image/jpeg")
 
-    def process_image(self, image_path: str) -> str:
-        """Generate a text description for the image at *image_path*."""
+    async def process_image(self, image_path: str) -> str:
+        """Generate a text description for the image at *image_path* asynchronously."""
         start = time.time()
         logger.info(f"Processing image [{self.config.ai_provider.value}]: {image_path}")
 
@@ -400,7 +401,7 @@ class AIProcessor:
             return f"[Unsupported provider: {p}]"
 
         try:
-            description = self._process_with_retry(_call)
+            description = await self._process_with_retry(_call)
             logger.info(f"Image processed in {time.time() - start:.2f}s")
             return description
         except Exception as e:
@@ -411,8 +412,8 @@ class AIProcessor:
     # Table processing (text-only)
     # ------------------------------------------------------------------
 
-    def process_table(self, table_content: str) -> str:
-        """Generate a text summary for the markdown *table_content*."""
+    async def process_table(self, table_content: str) -> str:
+        """Generate a text summary for the markdown *table_content* asynchronously."""
         start = time.time()
         full_prompt = self.config.table_prompt + table_content
         p = self.config.ai_provider
@@ -456,7 +457,7 @@ class AIProcessor:
             return "[Unsupported provider]"
 
         try:
-            summary = self._process_with_retry(_call)
+            summary = await self._process_with_retry(_call)
             logger.info(f"Table processed in {time.time() - start:.2f}s")
             return summary
         except Exception as e:
@@ -467,14 +468,15 @@ class AIProcessor:
     # Retry wrapper
     # ------------------------------------------------------------------
 
-    def _process_with_retry(self, func, *args, **kwargs):
+    async def _process_with_retry(self, func, *args, **kwargs):
         for attempt in range(self.config.max_retries):
             try:
-                return func(*args, **kwargs)
+                # Wrap synchronous API calls inside a thread pool to avoid blocking the event loop
+                return await asyncio.to_thread(func, *args, **kwargs)
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1}/{self.config.max_retries} failed: {e}")
                 if attempt < self.config.max_retries - 1:
-                    time.sleep(self.config.retry_delay)
+                    await asyncio.sleep(self.config.retry_delay)
                 else:
                     raise
 
@@ -484,8 +486,8 @@ class AIProcessor:
 # ---------------------------------------------------------------------------
 
 
-def process_markdown(config: ProcessorConfig) -> Path:
-    """Process a markdown file – generate image/table descriptions via AI."""
+async def process_markdown(config: ProcessorConfig) -> Path:
+    """Process a markdown file – generate image/table descriptions via AI asynchronously."""
     start = time.time()
     logger.info(f"Starting markdown processing [{config.ai_provider.value}]")
 
@@ -509,49 +511,64 @@ def process_markdown(config: ProcessorConfig) -> Path:
     # ---- images ----
     if config.image_descriptions:
         img_pattern = r"!\[([^\]]*)\]\(([^)]+)\)"
-        img_count = len(re.findall(img_pattern, content))
-        logger.info(f"Found {img_count} images")
+        matches = list(re.finditer(img_pattern, content))
+        logger.info(f"Found {len(matches)} images")
 
-        def replace_image(match):
+        async def _replace_image_match(match):
             alt_text, image_path = match.groups()
             decoded = urllib.parse.unquote(image_path)
-            # Security: block path traversal
             try:
                 root = input_path.parent.resolve()
                 full = (root / decoded).resolve()
                 if not str(full).startswith(str(root)):
                     logger.warning(f"Blocked path traversal attempt: {image_path}")
-                    return "[Image skipped: path outside document directory]"
+                    return match.group(0), "[Image skipped: path outside document directory]"
             except Exception:
                 logger.warning(f"Could not resolve image path: {image_path}")
-                return "[Image skipped: invalid path]"
+                return match.group(0), "[Image skipped: invalid path]"
 
             if full.exists():
-                desc = ai_processor.process_image(str(full))
+                desc = await ai_processor.process_image(str(full))
                 if config.remove_images:
-                    return f"\n\n**Image Description:** {desc}\n\n"
-                return f"![{alt_text}]({image_path})\n\n**Image Description:** {desc}\n\n"
+                    return match.group(0), f"\n\n**Image Description:** {desc}\n\n"
+                return match.group(0), f"![{alt_text}]({image_path})\n\n**Image Description:** {desc}\n\n"
+            
             logger.warning(f"Image not found: {image_path}")
-            return f"[Image not found: {image_path}]"
+            return match.group(0), f"[Image not found: {image_path}]"
 
-        content = re.sub(img_pattern, replace_image, content)
+        # Gather results concurrently
+        tasks = [_replace_image_match(m) for m in matches]
+        results = await asyncio.gather(*tasks)
+        
+        # Replace the original content iteratively with the new content
+        for original_str, new_str in results:
+            content = content.replace(original_str, new_str)
+            
+        img_count = len(matches)
     else:
         img_count = 0
 
     # ---- tables ----
     if config.table_descriptions:
         table_pattern = r"(\|[^\n]+\|\n\|[-:\|\s]+\|\n(?:\|[^\n]+\|\n)+)"
-        table_count = len(re.findall(table_pattern, content))
-        logger.info(f"Found {table_count} tables")
+        matches = list(re.finditer(table_pattern, content))
+        logger.info(f"Found {len(matches)} tables")
 
-        def replace_table(match):
+        async def _replace_table_match(match):
             table_content = match.group(1)
-            summary = ai_processor.process_table(table_content)
+            summary = await ai_processor.process_table(table_content)
             if config.remove_tables:
-                return f"\n\n**Table Summary:** {summary}\n\n"
-            return f"{table_content}\n\n**Table Summary:** {summary}\n\n"
+                return match.group(0), f"\n\n**Table Summary:** {summary}\n\n"
+            return match.group(0), f"{table_content}\n\n**Table Summary:** {summary}\n\n"
 
-        content = re.sub(table_pattern, replace_table, content)
+        # Gather table summaries concurrently
+        tasks = [_replace_table_match(m) for m in matches]
+        results = await asyncio.gather(*tasks)
+
+        for original_str, new_str in results:
+            content = content.replace(original_str, new_str)
+
+        table_count = len(matches)
     else:
         table_count = 0
 

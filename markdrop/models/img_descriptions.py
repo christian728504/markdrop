@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pandas as pd
@@ -46,7 +47,7 @@ def generate_descriptions(input_path, output_dir, prompt, llm_client=None):
         for model in llm_client:
             try:
                 # Convert path to string for model processing
-                response = generate_response([str(img_path)], prompt, model_choice=model)
+                response = asyncio.run(generate_response([str(img_path)], prompt, model_choice=model))
                 results.append({"image_path": str(img_path), "model": model, "response": response})
                 print(f"Processed {img_path} with {model}")
             except Exception as e:
