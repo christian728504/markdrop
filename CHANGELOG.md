@@ -56,6 +56,11 @@ All notable changes to this project will be documented in this file.
 - Improved requirements for better installations.
 - Fixed image path error in Gemini description generations.
 
+## [4.0.2] - 18-03-2026
+### Added
+- Created comprehensive `SKILL.md` for AI agent integration (`.agent/skills/markdrop/SKILL.md`).
+- Documented explicit usage patterns for URL support, extra CLI tools, and `pip install` extensions.
+
 ## [0.4.0] - 10-03-2026
 ### Added
 - Anthropic, Groq, OpenRouter, and LiteLLM provider support.
