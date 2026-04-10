@@ -3,23 +3,6 @@ from contextlib import suppress
 
 from .helper import analyze_pdf_images
 
-import sys
-from unittest.mock import MagicMock
-if 'torch' not in sys.modules:
-    sys.modules['torch'] = MagicMock()
-if 'transformers' not in sys.modules:
-    sys.modules['transformers'] = MagicMock()
-if 'docling' not in sys.modules:
-    sys.modules['docling'] = MagicMock()
-    sys.modules['docling.document_converter'] = MagicMock()
-    sys.modules['docling.datamodel'] = MagicMock()
-    sys.modules['docling.datamodel.base_models'] = MagicMock()
-    sys.modules['docling.datamodel.pipeline_options'] = MagicMock()
-if 'docling_core' not in sys.modules:
-    sys.modules['docling_core'] = MagicMock()
-    sys.modules['docling_core.types'] = MagicMock()
-    sys.modules['docling_core.types.doc'] = MagicMock()
-
 # Suppress noisy transformers / torch warnings at import time
 with suppress(ImportError):
     from .ignore_warnings import *  # noqa: F401, F403
